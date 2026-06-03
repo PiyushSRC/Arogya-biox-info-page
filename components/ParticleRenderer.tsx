@@ -1,7 +1,8 @@
-import React, { lazy, Suspense, useState, useEffect } from 'react';
+import React, { Suspense, useState, useEffect } from 'react';
 import { AppMode } from '../types';
+import { lazyWithRetry } from '../utils/lazyWithRetry';
 
-const ParticleRing = lazy(() => import('./ParticleRing'));
+const ParticleRing = lazyWithRetry(() => import('./ParticleRing'));
 
 interface ParticleRendererProps {
   mode: AppMode;

@@ -4,8 +4,13 @@ interface State {
   hasError: boolean;
 }
 
-class ErrorBoundary extends React.Component<React.PropsWithChildren, State> {
-  constructor(props: React.PropsWithChildren) {
+interface Props {
+  /** Optional custom UI to show on error. Defaults to a full-screen message. */
+  fallback?: React.ReactNode;
+}
+
+class ErrorBoundary extends React.Component<React.PropsWithChildren<Props>, State> {
+  constructor(props: React.PropsWithChildren<Props>) {
     super(props);
     this.state = { hasError: false };
   }
@@ -20,6 +25,9 @@ class ErrorBoundary extends React.Component<React.PropsWithChildren, State> {
 
   render() {
     if (this.state.hasError) {
+      if (this.props.fallback !== undefined) {
+        return this.props.fallback;
+      }
       return (
         <div className="min-h-screen bg-black text-white flex items-center justify-center p-8">
           <div className="text-center max-w-md">
