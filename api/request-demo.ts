@@ -15,17 +15,29 @@ function escapeHtml(str: string): string {
 
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 
+function getClientIp(request: VercelRequest): string {
+  // Vercel sets x-real-ip to the trustworthy client IP. The leftmost
+  // x-forwarded-for value is client-supplied and spoofable, so prefer x-real-ip.
+  const realIp = request.headers['x-real-ip'];
+  if (typeof realIp === 'string' && realIp.trim()) return realIp.trim();
+  const xff = request.headers['x-forwarded-for'];
+  const list = Array.isArray(xff) ? xff : (typeof xff === 'string' ? xff.split(',') : []);
+  const last = list[list.length - 1]?.trim();
+  return last || request.socket?.remoteAddress || 'unknown';
+}
+
 function checkRateLimit(request: VercelRequest): boolean {
-  const ip =
-    (Array.isArray(request.headers['x-forwarded-for'])
-      ? request.headers['x-forwarded-for'][0]
-      : request.headers['x-forwarded-for']?.split(',')[0]?.trim()) ||
-    request.socket?.remoteAddress ||
-    'unknown';
-
+  const ip = getClientIp(request);
   const now = Date.now();
-  const entry = rateLimitMap.get(ip);
 
+  // Bound the map so a flood of distinct IPs can't grow it without limit.
+  if (rateLimitMap.size > 10_000) {
+    for (const [key, value] of rateLimitMap) {
+      if (value.resetAt < now) rateLimitMap.delete(key);
+    }
+  }
+
+  const entry = rateLimitMap.get(ip);
   if (!entry || entry.resetAt < now) {
     rateLimitMap.set(ip, { count: 1, resetAt: now + 60_000 });
     return true;
@@ -59,6 +71,18 @@ export default async function handler(request: VercelRequest, response: VercelRe
 
     if (!fullName || !email || !labName || !address || !city || !contact || !selectedSlot) {
       return response.status(400).json({ error: 'Missing required fields' });
+    }
+
+    if (
+      typeof fullName !== 'string' ||
+      typeof email !== 'string' ||
+      typeof labName !== 'string' ||
+      typeof address !== 'string' ||
+      typeof city !== 'string' ||
+      typeof contact !== 'string' ||
+      typeof selectedSlot !== 'string'
+    ) {
+      return response.status(400).json({ error: 'Invalid field types' });
     }
 
     if (!validateEmail(email)) {
