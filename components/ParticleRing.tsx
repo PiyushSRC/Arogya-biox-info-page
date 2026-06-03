@@ -110,9 +110,6 @@ function createSprites(): HTMLCanvasElement | null {
   return spriteCanvas;
 }
 
-const prefersReducedMotion = typeof window !== 'undefined'
-  && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
 function getParticleCount(width: number): number {
   if (width < 768) return 120;
   if (width < 1024) return 500;
@@ -139,6 +136,7 @@ const ParticleRing: React.FC<ParticleRingProps> = ({ mode }) => {
   });
 
   const prevWidth = useRef<number>(0);
+  const prevHeight = useRef<number>(0);
   const cachedRect = useRef<DOMRect | null>(null);
   const lastDrawTime = useRef<number>(0);
 
@@ -200,34 +198,20 @@ const ParticleRing: React.FC<ParticleRingProps> = ({ mode }) => {
     }
   }, []);
 
-  const draw = useCallback((timestamp: number = 0) => {
+  // Renders a single frame (no scheduling). Reused by the animation loop and
+  // for the one-off static frame drawn when prefers-reduced-motion is enabled,
+  // so the visual is always painted instead of leaving a blank canvas.
+  const renderFrame = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !spriteCanvasRef.current) return;
 
-    // Pause animation when scrolled out of viewport
-    if (!isVisible.current) {
-      animationFrameId.current = requestAnimationFrame(draw);
-      return;
-    }
-
     // Skip drawing if canvas has zero dimensions
-    if (canvas.offsetWidth === 0 || canvas.offsetHeight === 0) {
-      animationFrameId.current = requestAnimationFrame(draw);
-      return;
-    }
-
-    // FPS Throttling: ~30fps on mobile, ~45fps on tablets
-    const isMobile = canvas.width < 768;
-    const elapsed = timestamp - lastDrawTime.current;
-    const targetInterval = isMobile ? 32 : (canvas.width < 1024 ? 22 : 0);
-    if (targetInterval > 0 && elapsed < targetInterval) {
-      animationFrameId.current = requestAnimationFrame(draw);
-      return;
-    }
-    lastDrawTime.current = timestamp;
+    if (canvas.offsetWidth === 0 || canvas.offsetHeight === 0) return;
 
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
+
+    const isMobile = canvas.width < 768;
 
     ctx.fillStyle = PALETTE.DEEP;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -334,38 +318,85 @@ const ParticleRing: React.FC<ParticleRingProps> = ({ mode }) => {
     }
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    animationFrameId.current = requestAnimationFrame(draw);
   }, []);
 
+  const draw = useCallback((timestamp: number = 0) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !spriteCanvasRef.current) return;
+
+    // Pause animation when scrolled out of viewport
+    if (!isVisible.current) {
+      animationFrameId.current = requestAnimationFrame(draw);
+      return;
+    }
+
+    // Skip drawing if canvas has zero dimensions
+    if (canvas.offsetWidth === 0 || canvas.offsetHeight === 0) {
+      animationFrameId.current = requestAnimationFrame(draw);
+      return;
+    }
+
+    // FPS Throttling: ~30fps on mobile, ~45fps on tablets
+    const isMobile = canvas.width < 768;
+    const elapsed = timestamp - lastDrawTime.current;
+    const targetInterval = isMobile ? 32 : (canvas.width < 1024 ? 22 : 0);
+    if (targetInterval > 0 && elapsed < targetInterval) {
+      animationFrameId.current = requestAnimationFrame(draw);
+      return;
+    }
+    lastDrawTime.current = timestamp;
+
+    renderFrame();
+    animationFrameId.current = requestAnimationFrame(draw);
+  }, [renderFrame]);
+
   useEffect(() => {
-    const handleResize = () => {
-      if (canvasRef.current) {
-        const parent = canvasRef.current.parentElement;
-        if (parent) {
-          const newWidth = parent.clientWidth;
-          if (newWidth === prevWidth.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const parent = canvas.parentElement;
+    if (!parent) return;
 
-          prevWidth.current = newWidth;
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-          const isMobile = newWidth < 768;
-          const pixelRatio = isMobile ? Math.min(1.5, window.devicePixelRatio) : window.devicePixelRatio;
-
-          canvasRef.current.width = newWidth * pixelRatio;
-          canvasRef.current.height = parent.clientHeight * pixelRatio;
-          canvasRef.current.style.width = `${newWidth}px`;
-          canvasRef.current.style.height = `${parent.clientHeight}px`;
-          cachedRect.current = canvasRef.current.getBoundingClientRect();
-
-          particles.current = [];
-          initParticles(newWidth, parent.clientHeight);
-
-          if (animationFrameId.current) {
-            cancelAnimationFrame(animationFrameId.current);
-            animationFrameId.current = undefined;
-          }
-          draw();
-        }
+    // Start the animation loop, or — when reduced motion is preferred — paint a
+    // single static frame. Either way the torus is always visible (never blank).
+    const start = () => {
+      if (animationFrameId.current) {
+        cancelAnimationFrame(animationFrameId.current);
+        animationFrameId.current = undefined;
       }
+      if (motionQuery.matches) {
+        renderFrame();
+      } else {
+        draw();
+      }
+    };
+
+    // Size the canvas to its parent and (re)build particles. Guards against a
+    // zero-sized parent (layout not settled yet) so init isn't silently skipped,
+    // and re-inits on real width OR height changes.
+    const sizeAndInit = () => {
+      const newWidth = parent.clientWidth;
+      const newHeight = parent.clientHeight;
+      if (newWidth === 0 || newHeight === 0) return;
+      if (newWidth === prevWidth.current && newHeight === prevHeight.current) return;
+
+      prevWidth.current = newWidth;
+      prevHeight.current = newHeight;
+
+      const isMobile = newWidth < 768;
+      const pixelRatio = isMobile ? Math.min(1.5, window.devicePixelRatio) : window.devicePixelRatio;
+
+      canvas.width = newWidth * pixelRatio;
+      canvas.height = newHeight * pixelRatio;
+      canvas.style.width = `${newWidth}px`;
+      canvas.style.height = `${newHeight}px`;
+      cachedRect.current = canvas.getBoundingClientRect();
+
+      particles.current = [];
+      initParticles(newWidth, newHeight);
+
+      start();
     };
 
     const handleMouseMove = (e: MouseEvent) => {
@@ -382,33 +413,44 @@ const ParticleRing: React.FC<ParticleRingProps> = ({ mode }) => {
       mouseRef.current.active = false;
     };
 
-    // Skip animation entirely for users who prefer reduced motion
-    if (prefersReducedMotion) return;
+    // Re-init on container size changes (width AND height, plus the first
+    // non-zero layout) instead of relying solely on window 'resize'.
+    const resizeObserver = new ResizeObserver(() => sizeAndInit());
+    resizeObserver.observe(parent);
 
     // Pause animation when canvas is not in viewport (saves CPU/battery on scroll)
     const visibilityObserver = new IntersectionObserver(
       ([entry]) => { isVisible.current = entry.isIntersecting; },
       { threshold: 0 }
     );
-    if (canvasRef.current) visibilityObserver.observe(canvasRef.current);
+    visibilityObserver.observe(canvas);
 
-    window.addEventListener('resize', handleResize);
+    // React to the user toggling the OS "reduce motion" setting at runtime.
+    const handleMotionChange = () => start();
+    motionQuery.addEventListener('change', handleMotionChange);
+
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('touchmove', handleTouchMove, { passive: true });
     window.addEventListener('touchend', handleTouchEnd);
 
-    handleResize();
-    draw();
+    // Initial sizing in case layout is already settled (ResizeObserver also
+    // fires once on observe; the size guard prevents a duplicate init).
+    sizeAndInit();
+    // Ensure a render is running even if sizeAndInit short-circuited because the
+    // dimensions were unchanged (e.g. a StrictMode remount reusing the sized
+    // canvas) — otherwise the loop would never (re)start.
+    start();
 
     return () => {
+      resizeObserver.disconnect();
       visibilityObserver.disconnect();
-      window.removeEventListener('resize', handleResize);
+      motionQuery.removeEventListener('change', handleMotionChange);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('touchend', handleTouchEnd);
       if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
     };
-  }, [initParticles, draw]);
+  }, [initParticles, draw, renderFrame]);
 
   return (
     <canvas

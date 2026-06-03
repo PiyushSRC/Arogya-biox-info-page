@@ -1,10 +1,24 @@
-import React, { useState, useCallback, memo } from 'react';
+import React, { useState, useCallback, useRef, useEffect, memo } from 'react';
 import Footer from './Footer';
 import { fetchWithTimeout } from '../utils/fetchWithTimeout';
 
 const ContactSection: React.FC = () => {
   const [formData, setFormData] = useState({ name: '', email: '', phone: '', message: '' });
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  // Tracks the "reset to idle" timer so a stale one can't fire into a later
+  // submit (corrupting its status) or leak after unmount.
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, []);
+
+  const scheduleIdleReset = useCallback(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(() => setStatus('idle'), 5000);
+  }, []);
 
   const handleFieldChange = useCallback((field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -12,6 +26,8 @@ const ContactSection: React.FC = () => {
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
+    // Cancel any pending idle-reset from a previous submit before starting.
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     setStatus('loading');
 
     try {
@@ -40,13 +56,13 @@ const ContactSection: React.FC = () => {
 
       setStatus('success');
       setFormData({ name: '', email: '', phone: '', message: '' });
-      setTimeout(() => setStatus('idle'), 5000);
+      scheduleIdleReset();
     } catch (error) {
       console.error('Error sending message:', error);
       setStatus('error');
-      setTimeout(() => setStatus('idle'), 5000);
+      scheduleIdleReset();
     }
-  }, [formData]);
+  }, [formData, scheduleIdleReset]);
 
   return (
     <div className="relative z-20 md:min-h-screen pt-12 md:pt-32 pb-8 px-4 md:px-12 lg:px-24 bg-gradient-to-t from-blue-900/5 to-transparent flex flex-col justify-center">

@@ -1,7 +1,8 @@
-import React, { useCallback, lazy, Suspense } from 'react';
+import React, { useCallback, Suspense } from 'react';
 import { scrollTo } from '../utils/scroll';
+import { lazyWithRetry } from '../utils/lazyWithRetry';
 
-const MobileParticleThree = lazy(() => import('./MobileParticleThree'));
+const MobileParticleThree = lazyWithRetry(() => import('./MobileParticleThree'));
 
 const Hero: React.FC = () => {
   const handleContactClick = useCallback(() => scrollTo('contact'), []);
@@ -12,7 +13,7 @@ const Hero: React.FC = () => {
       <div className="w-full max-w-7xl mx-auto flex flex-col items-center justify-center gap-12 lg:gap-20">
         <div className="w-full flex flex-col items-center text-center group/hero-text">
           <h1
-            className="text-4xl sm:text-5xl md:text-display-1 font-heading font-light leading-[1.1] md:leading-[1] mb-6 md:mb-10 tracking-tight text-white cursor-default"
+            className="text-4xl sm:text-5xl lg:text-display-1 font-heading font-light leading-[1.1] lg:leading-[1] mb-6 md:mb-10 tracking-tight text-white cursor-default"
           >
             <span className="inline-block transition-[color,filter] duration-700 group-hover/hero-text:text-blue-400 group-hover/hero-text:drop-shadow-[0_0_25px_rgba(96,165,250,0.4)] will-change-[filter] transform-gpu">
               Clinical Intelligence
@@ -27,7 +28,7 @@ const Hero: React.FC = () => {
           </p>
 
           {/* Mobile particle animation — rendered inline in the flow so it never overlaps buttons */}
-          <div className="md:hidden w-full h-[300px] sm:h-[340px] relative overflow-hidden my-6">
+          <div className="md:hidden w-full h-[300px] sm:h-[340px] max-h-[55vh] relative overflow-hidden my-6">
             <Suspense fallback={null}>
               <MobileParticleThree />
             </Suspense>

@@ -1,13 +1,15 @@
-import React, { useEffect, useRef, lazy, Suspense } from 'react';
+import React, { useEffect, useRef, Suspense } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import ParticleRenderer from './components/ParticleRenderer';
+import ErrorBoundary from './components/ErrorBoundary';
+import { lazyWithRetry } from './utils/lazyWithRetry';
 import { AppMode } from './types';
-const CompanyBackground = lazy(() => import('./components/CompanyBackground'));
-const ProductSection = lazy(() => import('./components/ProductSection'));
-const ValuePropSection = lazy(() => import('./components/ValuePropSection'));
-const PricingSection = lazy(() => import('./components/PricingSection'));
-const ContactSection = lazy(() => import('./components/ContactSection'));
+const CompanyBackground = lazyWithRetry(() => import('./components/CompanyBackground'));
+const ProductSection = lazyWithRetry(() => import('./components/ProductSection'));
+const ValuePropSection = lazyWithRetry(() => import('./components/ValuePropSection'));
+const PricingSection = lazyWithRetry(() => import('./components/PricingSection'));
+const ContactSection = lazyWithRetry(() => import('./components/ContactSection'));
 
 const CARBON_FIBRE_URI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAWCAYAAADafVyIAAAAV0lEQVR4AWPg5uaexcDI8B9Ec3JyFhDCpKpnACmGYWI0kKqe9j4AAi0gBtPEaCBZPYggF1NsAYXBR9gCShPAwPuAkgRA30imJR4tKkaLitGiYrSoIAIDAKy7LKCTTHSAAAAAAElFTkSuQmCC';
 
@@ -83,7 +85,9 @@ const App: React.FC = () => {
 
       <main ref={mainRef} className="relative pb-0 md:pb-0">
         <section id="hero" className="relative min-h-dvh overflow-hidden flex items-center scroll-mt-20 md:scroll-mt-24">
-          <ParticleRenderer mode={MODE} />
+          <ErrorBoundary fallback={<div className="absolute inset-0 z-10 bg-gradient-to-br from-black via-blue-950/20 to-black" />}>
+            <ParticleRenderer mode={MODE} />
+          </ErrorBoundary>
           <Hero />
         </section>
 
